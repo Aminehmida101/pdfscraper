@@ -122,7 +122,7 @@ python import os1.py
 searches 
 
 <p align="center">
-  <img src="img/step1.png" alt="step1" width="400"/>
+  <img src="img/step1.png" alt="step1"/>
 </p>
 
 ### Step 2: dowload pdfs and extract 
@@ -131,7 +131,7 @@ After the script finishes, checking output folder for the downloaded PDFs and th
 
 
 <p align="center">
-  <img src="img/step2.png" alt="step2" width="400"/>
+  <img src="img/step2.png" alt="step2"/>
 </p>
 
 ### Step 3: Review the Excel File
@@ -140,7 +140,7 @@ Open `extracted_results.xlsx` to review the extracted metadata.
 
 
 <p align="center">
-  <img src="img/step3.png" alt="step3" width="400"/>
+  <img src="img/step3.png" alt="step3"/>
 </p>
 
 
