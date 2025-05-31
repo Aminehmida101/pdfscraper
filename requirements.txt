@@ -1,0 +1,8 @@
+scholarly
+fake-useragent
+requests
+PyMuPDF
+pandas
+openpyxl
+xlsxwriter
+spacy

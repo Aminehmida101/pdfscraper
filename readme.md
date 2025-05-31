@@ -1,50 +1,153 @@
-# Automated Google Scholar PDF Scraper
+# Academic PDF Scraper & Metadata Extractor
+
+## 📚 Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Output](#output)
+- [Limitations](#limitations)
+- [Roadmap](#roadmap)
+- [Test Run Example](#test-run-example)
+
+---
 
 ## Overview
+This project automates the extraction of academic PDFs from Google Scholar, downloads the PDFs, extracts detailed metadata (including theme/module), and saves the results to a formatted Excel file. It is designed for research, academic, and professional use, supporting complex Boolean queries and robust PDF detection.
 
-This Python project automates the search, download, and metadata extraction of academic PDF documents from Google Scholar based on complex Boolean keyword queries. It is designed for researchers and analysts who need to gather large sets of scholarly articles efficiently and reliably.
+---
 
-## Key Features
+## Features
+- **Automated Google Scholar Search:** Supports complex Boolean queries (AND/OR logic, parentheses, multi-word terms).
+- **PDF Downloading:** Detects and downloads academic PDFs, with robust validation and duplicate prevention.
+- **Metadata Extraction:** Extracts title, author, year, abstract, keywords, and advanced metadata (theme/module guessing using NLP and heuristics).
+- **Excel Export:** Results are saved in a professional Excel file with autofilter, freeze panes, and easy-to-filter test flags.
+- **Test Mode:** Per-query and global caps for safe testing; test results are flagged for easy deletion.
+- **Human-like Behavior:** Randomized delays, query skipping, and back-off against CAPTHCA to reduce risk of blocking.
 
-1. **Advanced Boolean Query Support**  
-   - Parses AND/OR logic in your query string to generate all term combinations and maximize result coverage.
-
-2. **Targeted PDF Search**  
-   - Appends `filetype:pdf` to each query to ensure only PDF documents are returned.
-
-3. **Anti-Scraping Measures**  
-   - **Rotating User-Agents**: Randomizes headers on every request to mimic different browsers.  
-   - **Randomized Delays**: Inserts human-like pauses (5–10 seconds) between searches and downloads.  
-   - **Adaptive Back-off**: Detects HTTP 429 and CAPTCHAs and automatically pauses for 5 minutes.
-
-4. **Proxy Support**  
-   - Optional integration with HTTP/S proxies for IP rotation and enhanced anonymity.
-
-5. **Robust Download Validation**  
-   - Verifies PDF signature (`%PDF-`) and HTTP status code before saving.  
-   - Sanitizes filenames to ensure Windows compatibility.
-
-6. **Comprehensive Metadata Extraction**  
-   - Uses PyMuPDF to extract text and PDF metadata (title, author, creation date).  
-   - Heuristic and NLP-based approaches to guess author, publication date, theme, and module.  
-   - Extracts abstracts and keyword sections from the first two pages.
-
-7. **Link Extraction**  
-   - Collects URLs from link annotations and text, filtered for academic domains (`.edu`, `.ac`, `.org`).
-
-8. **Caching and Duplication Avoidance**  
-   - Loads existing Excel records to skip already-downloaded PDF URLs.
-
-9. **Formatted Excel Reporting**  
-   - Appends new results to an existing Excel file, preserves prior data.  
-   - Automatically adjusts column widths, freezes headers, and applies filters for easy review.
-
-10. **Summary Reporting**  
-    - Prints total downloads, failures, and a breakdown of detected document themes.
+---
 
 ## Installation
 
-1. **Clone the repository**  
-   ```bash
-   git clone https://github.com/yourusername/scholar-pdf-scraper.git
-   cd scholar-pdf-scraper
+1. **Clone or Download the Repository**
+   ```
+   git clone https://github.com/Aminehmida101/pdfscraper.git
+   cd project
+   ```
+2. **Install Python Dependencies**
+   - Requires Python 3.8+
+   - Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+   - Key dependencies: `requests`, `PyMuPDF`, `pandas`, `xlsxwriter`, `scholarly`, `fake_useragent`, `scikit-learn` (optional)
+
+---
+
+## Usage
+
+1. **Prepare Your Query**
+   - Edit the `query_string` in `import os1.py` to match your research needs. Supports AND/OR logic, parentheses, and multi-word terms.
+   - Example:
+     ```python
+     query_string = (
+         '("Tunisie" OR "Tunis" OR "Grand Tunis") AND ("habitat anarchique" OR "habitat spontané")'
+     )
+     ```
+2. **Run the Script**
+   ```
+   python "import os1.py"
+   ```
+   **Important:**
+   - The script is set to extract a maximum of **50 PDFs per run** (`max_results=50`).
+   - To change the locations or the extraction cap, edit the `folder_path`, `excel_path`, and `max_results` variables in `import os1.py`.
+3. **Review Results**
+   - Open `extracted_results.xlsx` for all extracted metadata.
+
+## Configuration
+- **max_results:** Global cap on total PDFs to download (set in `main()`, default: 50)
+- **Proxies:** Set the `proxies` variable if you need to use a proxy server.
+- **Output paths:** Change `folder_path` and `excel_path` in `import os1.py` to set custom output locations.
+
+---
+
+## Output
+- **PDFs:** Downloaded to the specified folder (default: `C:\Users\Amine\desktop\pdfsss`).
+- **Excel File:** All extracted metadata is saved to `extracted_results.xlsx` in the same folder.
+- **Excel Columns:** Title, Authors, Year, Extracted Author, Extracted Year, Theme, Module, Abstract, Scholar Link, PDF URL, PDF Path, Links in PDF, Test Flag.
+- **Test Flag:** Use this column to filter/delete test data from test runs.
+
+---
+
+## Limitations
+- **Extraction Cap:** The script is hard-limited to extract a maximum of 50 PDFs per run (`max_results=50`).
+  - *Solution:* To extract more, implement a proxy changer/rotator to avoid rate limits and blocking, or run the script multiple times with different proxies.
+- **Per-query Cap:** Only 2 PDFs are extracted per query combination by default (for safe testing).
+  - *Solution:* Increase the per-query cap in the code if needed.
+- **No OCR:** Scanned/image-based PDFs cannot be parsed for text/metadata.
+  - *Solution:* Integrate OCR (e.g., Tesseract) for image-based PDFs if required.
+- **Unofficial API:** The `scholarly` package is not an official Google API and may break if Google changes its interface.
+  - *Solution:* Monitor for updates to `scholarly` or switch to a paid search API if needed.
+- **Excel File Size:** Very large result sets may slow down Excel.
+  - *Solution:* Use the test mode and caps to control output size, or split results into multiple files.
+
+---
+
+## Roadmap
+- [ ] Add proxy rotation/changer for unlimited extraction
+- [ ] Integrate OCR for scanned/image-based PDFs
+- [ ] Advanced NLP for deeper semantic metadata extraction
+- [ ] Manual review/approval workflow for production use
+- [ ] Support for additional academic search APIs
+- [ ] Web UI for easier configuration and monitoring
+
+---
+
+## Test Run Example
+
+This will search Google Scholar using the query:
+
+```python
+query_string = (
+    '("Tunisie" OR "Tunis" OR "Grand Tunis" OR "tunisien" OR "Maghreb") '
+    'AND ("habitat anarchique" OR "habitat spontané" OR "habitat non réglementaire" '
+    'OR "habitat informel" OR "gourbiville" OR "bidonville" OR "habitat précaire" '
+    'OR "habitat insalubre" OR "lotissement clandestin" OR "oukala" '
+    'OR "Habitat spontané péri-urbain" OR "HSPU" OR "gourbi" OR "quartier informel" '
+    'OR "quartier non réglementaire" OR "quartier anarchique")'
+)
+```
+
+and download up to 50 PDFs, extract metadata, and save the results to Excel.
+
+### Step 1: Run the Full Pipeline (Search, Download, Extract)
+```powershell
+python import os1.py
+```
+
+```powershell
+python import os1.py
+```
+
+<!-- Add screenshot here -->
+![Step 1: Run the full pipeline](img/step1.png)
+
+### Step 2: Check the Output Folder
+
+After the script finishes, check your output folder for the downloaded PDFs and the Excel file.
+
+<!-- Add screenshot here -->
+![Step 2: Output folder](img/step2.png)
+
+### Step 3: Review the Excel File
+
+Open `extracted_results.xlsx` to review the extracted metadata.
+
+<!-- Add screenshot here -->
+![Step 3: Excel results](img/step3.png)
+
+You can use the `Test Flag` column in the Excel file to filter or delete test data from your test run.
+
+---
+

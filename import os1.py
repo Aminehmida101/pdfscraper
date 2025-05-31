@@ -21,60 +21,22 @@ def get_new_headers():
     """Return a new randomized User-Agent header."""
     return {'User-Agent': UserAgent().random}
 
-# Oxylabs credentials and endpoint
-OXYLABS_USERNAME = "scraperhh_NvYEX"
-OXYLABS_PASSWORD = "21019590MOpl+"
-OXYLABS_ENDPOINT = "https://realtime.oxylabs.io/v1/queries"
-
-def oxylabs_google_search(query, max_results=30, geo_location="United States"):
-    payload = {
-        "source": "google_search",
-        "query": query,
-        "geo_location": geo_location,
-        "parse": True,
-        "pages": max(1, max_results // 10)
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    auth = (OXYLABS_USERNAME, OXYLABS_PASSWORD)
-    response = requests.post(OXYLABS_ENDPOINT, json=payload, headers=headers, auth=auth)
-    response.raise_for_status()
-    data = response.json()
-    import json
-    print("\n[DEBUG] Full Oxylabs API response for query:", query)
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+def search_google_scholar(keyword, max_results=6, delay=5, proxies=None):
+    """Search Google Scholar for articles matching the keyword, targeting only PDFs. Rotates user agent and supports proxies and adaptive back-off."""
     results = []
-    for page in data.get("results", []):
-        content = page.get("content", {})
-        results_dict = content.get("results", {})
-        if isinstance(results_dict, dict):
-            for section, items in results_dict.items():
-                if isinstance(items, list):
-                    for item in items:
-                        if isinstance(item, dict):
-                            results.append({
-                                "title": item.get("title"),
-                                "url": item.get("url"),  # Use 'url' instead of 'link'
-                                "snippet": item.get("desc")  # Use 'desc' as 'snippet' for consistency
-                            })
-        else:
-            print(f"[Warning] Unexpected 'results' type in Oxylabs response: {type(results_dict)} - {results_dict}")
-    return results
-
-def search_google_scholar(keyword, max_results=30, delay=2, proxies=None):
-    """Search Google Scholar for articles matching the keyword, targeting only PDFs. (Legacy, not used with Oxylabs)"""
-    results = []
+    # Refine the search query to include filetype:pdf
     refined_keyword = f"{keyword} filetype:pdf"
     search_query = scholarly.search_pubs(refined_keyword)
+
     for i in range(max_results):
         try:
+            # Rotate user agent every search
             global HEADERS
             HEADERS = get_new_headers()
             article = next(search_query)
             result = {
                 'title': article.get('bib', {}).get('title'),
-                'author': article.get('bib', {}).get('author'),
+                'author': article.get('bib', {}).get('author',
                 'year': article.get('bib', {}).get('pub_year'),
                 'abstract': article.get('bib', {}).get('abstract'),
                 'link': article.get('pub_url'),
@@ -82,12 +44,20 @@ def search_google_scholar(keyword, max_results=30, delay=2, proxies=None):
             }
             results.append(result)
             print(f"[{i+1}] Fetched: {result['title']}")
-            time.sleep(random.uniform(1, 2))  # Shorter delay
+            # Randomize pause between each search
+            time.sleep(random.uniform(5, 10))
         except StopIteration:
             break
         except Exception as e:
-            print(f" Error fetching article {i+1}: {e}")
-            time.sleep(delay)
+            # Adaptive back-off for HTTP 429 or CAPTCHA
+            err_str = str(e).lower()
+            if '429' in err_str or 'captcha' in err_str:
+                print('⚠️ Detected rate limit or CAPTCHA. Backing off for 5 minutes...')
+                time.sleep(300)
+            else:
+                print(f" Error fetching article {i+1}: {e}")
+                time.sleep(delay)
+
     return results
 
 # Simplified download_pdf: only checks for PDF signature, assumes URL is for a PDF (since search is refined)
@@ -187,35 +157,79 @@ def guess_date(text, doc=None):
     m = re.search(r'(19|20)\d{2}', sample_text)
     return m.group(0) if m else '?unknown'
 
-def guess_theme(text, theme_dict=None):
+def guess_theme(text, doc=None, theme_dict=None):
     """
-    Use a larger theme dictionary or TF-IDF/embedding if available, else fallback to keyword search.
+    Improved: Use PDF metadata (subject/keywords/title), then abstract/keywords, then TF-IDF (if available), then fallback to most frequent non-stopword.
     """
-    # 1. Use provided theme_dict (keyword: label)
+    import collections
+    stopwords = set(['the','and','of','in','to','a','for','on','with','as','by','is','at','an','be','are','from','that','this','it','or','was','which','can','has','have','not','but','we','our','their','they','these','using','use','used','also','may','such','more','than','other','its','into','between','been','were','had','all','one','two','three','four','five','six','seven','eight','nine','ten'])
+    meta_candidates = []
+    if doc is not None and hasattr(doc, 'metadata'):
+        meta = doc.metadata or {}
+        for k in ('subject', 'keywords', 'title'):
+            v = meta.get(k, '')
+            if v and isinstance(v, str):
+                meta_candidates.append(v)
+    abs_match = re.search(r'(?i)abstract[:\s\n]+(.{30,1000})', text)
+    kw_match = re.search(r'(?i)keywords?[:\s\n]+([\w,;\- ]{3,200})', text)
+    if abs_match:
+        meta_candidates.append(abs_match.group(1))
+    if kw_match:
+        meta_candidates.append(kw_match.group(1))
     if theme_dict:
         for label, keywords in theme_dict.items():
             for kw in keywords:
-                if kw.lower() in text.lower():
-                    return label
-    # 2. Fallback: hardcoded
-    for keyword in ["AI", "Machine Learning", "Blockchain", "Security", "Education"]:
-        if keyword.lower() in text.lower():
-            return keyword
+                for cand in meta_candidates:
+                    if kw.lower() in cand.lower():
+                        return label
+    # Try TF-IDF if available
+    if meta_candidates:
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            vectorizer = TfidfVectorizer(stop_words=list(stopwords), ngram_range=(1,2))
+            X = vectorizer.fit_transform(meta_candidates)
+            feature_array = vectorizer.get_feature_names_out()
+            tfidf_sort = X.sum(axis=0).A1.argsort()[::-1]
+            for idx in tfidf_sort:
+                word = feature_array[idx]
+                if word not in stopwords and len(word) > 3:
+                    return word.capitalize()
+        except Exception:
+            pass
+    # Fallback: most frequent non-stopword in first 30 lines
+    words = re.findall(r'\b\w{4,}\b', '\n'.join(text.split('\n')[:30]))
+    words = [w.lower() for w in words if w.lower() not in stopwords]
+    if words:
+        most_common = collections.Counter(words).most_common(1)
+        if most_common:
+            return most_common[0][0].capitalize()
     return '?unknown'
 
 def guess_module(text):
     """
-    Look for headings, section/chapter regex, or known module names.
+    Improved: Look for numbered headings, then large/standalone headings, then ALL CAPS/Title Case, else fallback.
     """
-    # 1. Section/Chapter regex
+    # 1. Numbered headings (e.g., '1. Introduction', '2. Methods')
+    for line in text.split('\n'):
+        if re.match(r'\d+\.\s+\w+', line.strip()):
+            return line.strip()
+    # 2. Section/Chapter regex
     for line in text.split('\n'):
         if re.match(r'(section|chapter|unit)\s*\d+', line, re.I):
             return line.strip()
-    # 2. Headings
+    # 3. Headings (Module, Course, etc.)
     for keyword in ["Module", "Course", "Unit", "Chapter"]:
         for line in text.split('\n'):
             if keyword.lower() in line.lower():
                 return line.strip()
+    # 4. First large/standalone heading (long, centered, not a sentence)
+    for line in text.split('\n'):
+        if len(line.strip()) > 8 and line.strip().isupper() and len(line.split()) < 8:
+            return line.strip()
+    # 5. Fallback: first Title Case line
+    for line in text.split('\n'):
+        if len(line.strip()) > 8 and re.match(r'^[A-Z][a-z]+( [A-Z][a-z]+)+$', line.strip()):
+            return line.strip()
     return '?unknown'
 
 def extract_pdf_info(filepath):
@@ -243,7 +257,7 @@ def extract_pdf_info(filepath):
             "found_links": extract_links(text, doc),
             "guessed_author": guess_author(text, doc),
             "guessed_date": guess_date(text, doc),
-            "guessed_theme": guess_theme(text),
+            "guessed_theme": guess_theme(text, doc),
             "guessed_module": guess_module(text),
             # Additional metadata
             "meta_title": meta.get('title', ''),
@@ -286,12 +300,10 @@ def parse_and_or_query(query):
     queries = [' '.join(term for term in combo if term) for combo in combos]
     return queries
 
-def main(query_string, max_results=30, proxies=None):
-    """Main function to search, download, extract, and save results for all combinations from the parsed query string."""
+def main(query_string, max_results=6, proxies=None):
     import random
     all_extracted_data = []
     excel_path = "C:\\Users\\Amine\\desktop\\pdfsss\\extracted_results.xlsx"
-    # Load cached links if file exists
     cached_links = set()
     if os.path.exists(excel_path):
         try:
@@ -306,37 +318,40 @@ def main(query_string, max_results=30, proxies=None):
     fail_count = 0
     topic_counter = {}
     queries = parse_and_or_query(query_string)
-    # Shuffle queries to avoid fixed order
     random.shuffle(queries)
     session = requests.Session()  # Use a session for cookies
     skipped_queries = []
     for idx, keyword in enumerate(queries):
+        if download_count >= max_results:
+            print(f"Reached global max_results ({max_results}). Stopping further fetching.")
+            break
         # Randomly skip some queries (simulate human behavior)
         if random.random() < 0.15:  # 15% chance to skip
             print(f"[Human-like skip] Skipping query: {keyword}")
             skipped_queries.append(keyword)
             continue
         print(f"\n🔍 Searching for: {keyword}")
-        results = oxylabs_google_search(keyword, max_results)
+        results = search_google_scholar(keyword, max_results, proxies=proxies)
         # Stop fetching if no results are returned (likely blocked or can't fetch anymore)
         if not results:
             print("No more results fetched. Stopping further fetching and continuing with available data.")
             break
         extracted_data = []
         skipped_articles = []
+        per_query_count = 0  # Track per-query PDF count
         for article in results:
-            # Debug: print every link returned by Oxylabs
-            link = article.get("url")
-            print(f"[DEBUG] Oxylabs result link: {link}")
+            if download_count >= max_results:
+                print(f"Reached global max_results ({max_results). Stopping further fetching.")
+                break
+            if per_query_count >= 2:
+                print(f"Per-query cap reached (2 PDFs for '{keyword}'). Moving to next query.")
+                break
             # Randomly skip some results (simulate human behavior)
             if random.random() < 0.10:  # 10% chance to skip
                 print(f"[Human-like skip] Skipping article: {article.get('title')}")
                 skipped_articles.append(article)
                 continue
-            if link and re.search(r'\.pdf($|[?#])', link, re.IGNORECASE):
-                pdf_url = link
-            else:
-                pdf_url = None
+            pdf_url = article.get("pdf_url")
             if not pdf_url:
                 print(f"Skipped: No PDF URL for article '{article.get('title')}'")
                 fail_count += 1
@@ -360,8 +375,10 @@ def main(query_string, max_results=30, proxies=None):
             topic = pdf_info.get('guessed_theme', '?unknown')
             topic_counter[topic] = topic_counter.get(topic, 0) + 1
             article.update(pdf_info)
+            article['test_flag'] = 'TEST'  # Add test flag for easy deletion
             extracted_data.append(article)
             download_count += 1
+            per_query_count += 1
             # Occasionally take a longer break to mimic human behavior
             if random.random() < 0.1:
                 pause = random.uniform(30, 90)
@@ -369,36 +386,10 @@ def main(query_string, max_results=30, proxies=None):
                 time.sleep(pause)
         print(f"Total valid PDFs extracted for '{keyword}': {len(extracted_data)}")
         all_extracted_data.extend(extracted_data)
-    # After main loop, go back and process skipped queries and articles
-    if skipped_queries:
-        print(f"\n[Human-like revisit] Returning to {len(skipped_queries)} skipped queries...")
-        for keyword in skipped_queries:
-            print(f"\n[Revisit] Searching for: {keyword}")
-            results = oxylabs_google_search(keyword, max_results)
-            if not results:
-                continue
-            for article in results:
-                link = article.get("url")
-                if link and re.search(r'\.pdf($|[?#])', link, re.IGNORECASE):
-                    pdf_url = link
-                else:
-                    pdf_url = None
-                if not pdf_url or pdf_url in cached_links:
-                    print(f"[Debug] Skipped non-PDF link: {link}")
-                    continue
-                title = article.get("title", "untitled")
-                folder_path = "C:\\Users\\Amine\\desktop\\pdfsss"
-                filepath = download_pdf(pdf_url, title, folder=folder_path, proxies=proxies)
-                if not filepath:
-                    continue
-                pdf_info = extract_pdf_info(filepath)
-                if not pdf_info:
-                    continue
-                topic = pdf_info.get('guessed_theme', '?unknown')
-                topic_counter[topic] = topic_counter.get(topic, 0) + 1
-                article.update(pdf_info)
-                all_extracted_data.append(article)
-                download_count += 1
+        if download_count >= max_results:
+            print(f"Reached global max_results ({max_results}). Stopping further fetching.")
+            break
+    # After main loop, go back and process skipped queries and articles (optional: you can skip revisits if you want strict cap)
     print(f"\n[Human-like revisit] Finished processing skipped queries.")
     if not all_extracted_data:
         print("No valid PDFs extracted for any keyword.")
@@ -407,7 +398,7 @@ def main(query_string, max_results=30, proxies=None):
     # Reorder and rename columns for presentation
     column_order = [
         'title', 'author', 'year', 'guessed_author', 'guessed_date', 'guessed_theme', 'guessed_module',
-        'abstract', 'link', 'pdf_url', 'pdf_path', 'found_links'
+        'abstract', 'link', 'pdf_url', 'pdf_path', 'found_links', 'test_flag'
     ]
     column_order = [col for col in column_order if col in df.columns]
     df = df[column_order]
@@ -423,10 +414,22 @@ def main(query_string, max_results=30, proxies=None):
         'link': 'Scholar Link',
         'pdf_url': 'PDF URL',
         'pdf_path': 'PDF Path',
-        'found_links': 'Links in PDF'
+        'found_links': 'Links in PDF',
+        'test_flag': 'Test Flag'
     })
     if 'Links in PDF' in df.columns:
-        df['Links in PDF'] = df['Links in PDF'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+        # Truncate each URL to 255 chars, and the whole cell to 500 chars
+        def safe_links(x):
+            if isinstance(x, list):
+                links = [str(url)[:255] for url in x]
+                joined = ', '.join(links)
+                if len(joined) > 500:
+                    return joined[:500] + '...(truncated)'
+                return joined
+            elif isinstance(x, str):
+                return x[:500] + '...(truncated)' if len(x) > 500 else x
+            return x
+        df['Links in PDF'] = df['Links in PDF'].apply(safe_links)
     if os.path.exists(excel_path):
         existing_df = pd.read_excel(excel_path)
         df = pd.concat([existing_df, df], ignore_index=True)
@@ -447,7 +450,6 @@ def main(query_string, max_results=30, proxies=None):
     for topic, count in topic_counter.items():
         print(f"  {topic}: {count}")
     print("============================\n")
-
 if __name__ == "__main__":
     # Example: pass your query string with AND/OR logic
     query_string = (
@@ -459,4 +461,4 @@ if __name__ == "__main__":
         'OR "quartier non réglementaire" OR "quartier anarchique")'
     )
     proxies = None  # Set your proxies here if needed
-    main(query_string=query_string, max_results=30, proxies=proxies)
+    main(query_string=query_string, max_results=6, proxies=proxies)
