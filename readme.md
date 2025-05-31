@@ -83,24 +83,18 @@ This project automates the extraction of academic PDFs from Google Scholar, down
 ## Limitations
 - **Extraction Cap:** The script is hard-limited to extract a maximum of 50 PDFs per run (`max_results=50`).
   - *Solution:* To extract more, implement a proxy changer/rotator to avoid rate limits and blocking, or run the script multiple times with different proxies.
-- **Per-query Cap:** Only 2 PDFs are extracted per query combination by default (for safe testing).
-  - *Solution:* Increase the per-query cap in the code if needed.
-- **No OCR:** Scanned/image-based PDFs cannot be parsed for text/metadata.
-  - *Solution:* Integrate OCR (e.g., Tesseract) for image-based PDFs if required.
-- **Unofficial API:** The `scholarly` package is not an official Google API and may break if Google changes its interface.
-  - *Solution:* Monitor for updates to `scholarly` or switch to a paid search API if needed.
-- **Excel File Size:** Very large result sets may slow down Excel.
-  - *Solution:* Use the test mode and caps to control output size, or split results into multiple files.
+
+   IMPORTANT!!: if Proxy Rotator is available we can include parallel dowloads to make the extraction faster and make the delays low , and remove backing off when encoutering CAPTCHA or HTML 429
+  
 
 ---
 
 ## Roadmap
 - [ ] Add proxy rotation/changer for unlimited extraction
-- [ ] Integrate OCR for scanned/image-based PDFs
+- [ ] Integrate OCR for scanned/image-based PDFs(for image pdfs)
 - [ ] Advanced NLP for deeper semantic metadata extraction
 - [ ] Manual review/approval workflow for production use
 - [ ] Support for additional academic search APIs
-- [ ] Web UI for easier configuration and monitoring
 
 ---
 
@@ -121,33 +115,34 @@ query_string = (
 
 and download up to 50 PDFs, extract metadata, and save the results to Excel.
 
-### Step 1: Run the Full Pipeline (Search, Download, Extract)
+### Step 1: Run the Full Pipeline (Search)
 ```powershell
 python import os1.py
 ```
+searches 
 
-```powershell
-python import os1.py
-```
+<p align="center">
+  <img src="img/step1.png" alt="step1" width="400"/>
+</p>
 
-<!-- Add screenshot here -->
-![Step 1: Run the full pipeline](img/step1.png)
+### Step 2: dowload pdfs and extract 
 
-### Step 2: Check the Output Folder
+After the script finishes, checking output folder for the downloaded PDFs and the Excel file.
 
-After the script finishes, check your output folder for the downloaded PDFs and the Excel file.
 
-<!-- Add screenshot here -->
-![Step 2: Output folder](img/step2.png)
+<p align="center">
+  <img src="img/step2.png" alt="step2" width="400"/>
+</p>
 
 ### Step 3: Review the Excel File
 
 Open `extracted_results.xlsx` to review the extracted metadata.
 
-<!-- Add screenshot here -->
-![Step 3: Excel results](img/step3.png)
 
-You can use the `Test Flag` column in the Excel file to filter or delete test data from your test run.
+<p align="center">
+  <img src="img/step3.png" alt="step3" width="400"/>
+</p>
+
 
 ---
 
